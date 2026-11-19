@@ -51,7 +51,7 @@ def checkout(body: CheckoutIn, db: Session = Depends(get_db), user: User = Depen
     )
     db.add(order)
     db.flush()
-    order.number = f"RZ-{1000 + order.id}"
+    order.number = f"FC-{1000 + order.id}"
     for row in rows:
         db.add(
             OrderItem(

@@ -115,7 +115,7 @@ function Gate({ mode }) {
   return (
     <main className="gate">
       <section className="story">
-        <p className="brand"><Mark /> Риза</p>
+        <p className="brand"><Mark /> food CRM</p>
         <h1>Заказ идёт одним чеком: казан, курьер, дверь.</h1>
         <p className="lede">
           Клиент собирает чек и следит, где еда. Кухня, курьер и стол видят тот же номер.
@@ -166,11 +166,11 @@ function Gate({ mode }) {
         )}
         {!isRegister && (
           <div className="staff">
-            <p>Персонал, пароль riza-staff</p>
+            <p>Персонал, пароль food-crm-demo</p>
             {[
-              ['admin@riza.kz', 'Стол'],
-              ['kitchen@riza.kz', 'Кухня'],
-              ['courier@riza.kz', 'Маршрут'],
+              ['admin@example.com', 'Стол'],
+              ['kitchen@example.com', 'Кухня'],
+              ['courier@example.com', 'Маршрут'],
             ].map(([email, label]) => (
               <button key={email} type="button" onClick={() => setField('email', email)}>
                 <span>{email}</span>
@@ -192,7 +192,7 @@ function Shell({ children }) {
   return (
     <div className="shell">
       <header className="top">
-        <Link to={ROLE_HOME[user.role]} className="brand"><Mark /> Риза</Link>
+        <Link to={ROLE_HOME[user.role]} className="brand"><Mark /> food CRM</Link>
         <nav>
           {client ? (
             <>

@@ -1,4 +1,4 @@
-const TOKEN_KEY = 'riza_token'
+const TOKEN_KEY = 'food_crm_token'
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY)

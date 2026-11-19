@@ -54,9 +54,9 @@ MENU = [
 ]
 
 STAFF = [
-    ("admin@riza.kz", "+7 700 000 00 01", "Айгуль Серик", "admin"),
-    ("kitchen@riza.kz", "+7 700 000 00 02", "Кухня Ризы", "restaurant"),
-    ("courier@riza.kz", "+7 700 000 00 03", "Данияр Кулов", "courier"),
+    ("admin@example.com", "+7 700 000 00 01", "Айгуль Серик", "admin"),
+    ("kitchen@example.com", "+7 700 000 00 02", "Демо-кухня", "restaurant"),
+    ("courier@example.com", "+7 700 000 00 03", "Данияр Кулов", "courier"),
 ]
 
 
@@ -95,7 +95,7 @@ def seed(db: Session) -> None:
                     email=email,
                     phone=phone,
                     full_name=full_name,
-                    password_hash=hash_password("riza-staff"),
+                    password_hash=hash_password("food-crm-demo"),
                     role=role,
                 )
             )

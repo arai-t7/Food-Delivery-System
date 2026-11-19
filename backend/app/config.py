@@ -12,7 +12,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = f"sqlite:///{BASE_DIR / 'riza.db'}"
+    database_url: str = f"sqlite:///{BASE_DIR / 'food_crm.db'}"
     jwt_secret: str = "dev-only-change-me"
     jwt_expire_days: int = 7
     seed_demo: bool = True
