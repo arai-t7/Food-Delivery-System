@@ -26,6 +26,7 @@ def order_payload(order: Order) -> dict:
     return {
         "id": order.id,
         "number": order.number,
+        "restaurant_id": order.restaurant_id,
         "status": order.status,
         "status_label": STATUS_LABELS.get(order.status, order.status),
         "address": order.address,

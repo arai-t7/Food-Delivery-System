@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -31,6 +32,8 @@ class AuthOut(BaseModel):
 
 
 class MenuItemOut(BaseModel):
+    image: str = ""
+    kind: str = "other"
     id: int
     category: str
     name: str
@@ -76,6 +79,7 @@ class OrderItemOut(BaseModel):
 
 
 class OrderOut(BaseModel):
+    restaurant_id: int | None = None
     id: int
     number: str
     status: str
@@ -91,3 +95,59 @@ class OrderOut(BaseModel):
 
 class StatusIn(BaseModel):
     status: str
+
+
+class RestaurantIn(BaseModel):
+    model_config = {"str_strip_whitespace": True}
+
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(min_length=1, max_length=4000)
+    address: str = Field(min_length=1, max_length=240)
+    phone: str = Field(min_length=6, max_length=32)
+    opening_hours: str = Field(min_length=1, max_length=120)
+    logo: str = Field(default="", max_length=2048, pattern=r"^(https?://\S+)?$")
+
+
+class RestaurantOut(RestaurantIn):
+    id: int
+    model_config = {"from_attributes": True}
+
+
+class RestaurantRegisterIn(RegisterIn):
+    restaurant: RestaurantIn
+
+
+class CategoryIn(BaseModel):
+    model_config = {"str_strip_whitespace": True}
+
+    name: str = Field(min_length=1, max_length=80)
+    kind: Literal["other", "drink", "salad", "first", "main"] = "other"
+
+
+class CategoryOut(CategoryIn):
+    id: int
+    restaurant_id: int
+    created_at: datetime
+    updated_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class DishIn(BaseModel):
+    model_config = {"str_strip_whitespace": True}
+
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(min_length=1, max_length=4000)
+    price: int = Field(ge=1, le=100000000)
+    category_id: int
+    image: str = Field(default="", max_length=2048, pattern=r"^(https?://\S+)?$")
+    is_available: bool = True
+
+
+class DishOut(DishIn):
+    id: int
+    restaurant_id: int
+    model_config = {"from_attributes": True}
+
+
+class CartSetIn(BaseModel):
+    menu_item_ids: list[int] = Field(min_length=1, max_length=4)

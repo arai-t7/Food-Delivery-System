@@ -53,11 +53,31 @@ class User(Base):
     orders: Mapped[list["Order"]] = relationship(back_populates="user")
 
 
+class Restaurant(Base):
+    __tablename__ = "restaurants"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), unique=True)
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str] = mapped_column(Text)
+    address: Mapped[str] = mapped_column(String(240))
+    phone: Mapped[str] = mapped_column(String(32))
+    opening_hours: Mapped[str] = mapped_column(String(120))
+    logo: Mapped[str] = mapped_column(Text, default="")
+
+
 class Category(Base):
     __tablename__ = "categories"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(80), unique=True)
+    __table_args__ = (UniqueConstraint("restaurant_id", "name_key"),)
+
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"))
+    name: Mapped[str] = mapped_column(String(80))
+    name_key: Mapped[str] = mapped_column(String(240))
+    kind: Mapped[str] = mapped_column(String(12), default="other")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     items: Mapped[list["MenuItem"]] = relationship(back_populates="category")
@@ -67,6 +87,8 @@ class MenuItem(Base):
     __tablename__ = "menu_items"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    restaurant_id: Mapped[int] = mapped_column(ForeignKey("restaurants.id"))
+    image: Mapped[str] = mapped_column(Text, default="")
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"))
     name: Mapped[str] = mapped_column(String(120))
     description: Mapped[str] = mapped_column(Text, default="")
@@ -94,6 +116,7 @@ class Order(Base):
     __tablename__ = "orders"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    restaurant_id: Mapped[int | None] = mapped_column(ForeignKey("restaurants.id"))
     number: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     status: Mapped[str] = mapped_column(String(20), default="placed", index=True)

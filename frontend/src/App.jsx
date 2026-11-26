@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { ROLE_HOME, ROLE_LABEL, STEPS, api, clearToken, getToken, setToken, tenge, when } from './api'
 import FortuneWheel from './FortuneWheel'
+import { MysteryMeal, RestaurantDashboard, RestaurantFields, SplitBill } from './RestaurantTools'
 
 const AuthContext = createContext(null)
 
@@ -70,7 +71,7 @@ function RequireAuth({ roles, children }) {
 function Home() {
   const { user, ready } = useAuth()
   if (!ready) return <p className="wait">Открываем смену…</p>
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) return <Catalog />
   return <Navigate to={ROLE_HOME[user.role]} replace />
 }
 
@@ -86,6 +87,7 @@ function Gate({ mode }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const isRegister = mode === 'register'
+  const [restaurant, setRestaurant] = useState(null)
 
   useEffect(() => {
     if (ready && user) navigate(ROLE_HOME[user.role], { replace: true })
@@ -101,9 +103,9 @@ function Gate({ mode }) {
     setError('')
     try {
       const body = isRegister
-        ? form
+        ? (restaurant ? { ...form, restaurant } : form)
         : { email: form.email, password: form.password }
-      const next = await enter(isRegister ? '/api/auth/register' : '/api/auth/login', body)
+      const next = await enter(isRegister ? (restaurant ? '/api/auth/register/restaurant' : '/api/auth/register') : '/api/auth/login', body)
       navigate(ROLE_HOME[next.role], { replace: true })
     } catch (err) {
       setError(err.message)
@@ -130,12 +132,17 @@ function Gate({ mode }) {
         <h2>{isRegister ? 'Регистрация' : 'Вход'}</h2>
         <p className="hint">
           {isRegister
-            ? 'Новый аккаунт всегда клиентский. Персонал входит по выданной почте.'
+            ? 'Выберите тип аккаунта.'
             : 'После входа откроется экран вашей роли.'}
         </p>
         <form onSubmit={submit}>
           {isRegister && (
             <>
+              <label>Тип аккаунта
+                <select value={restaurant ? 'restaurant' : 'client'} onChange={(event) => setRestaurant(event.target.value === 'restaurant' ? {} : null)}>
+                  <option value="client">Клиент</option><option value="restaurant">Ресторан</option>
+                </select>
+              </label>
               <label>
                 Имя
                 <input value={form.full_name} onChange={(e) => setField('full_name', e.target.value)} required minLength={2} />
@@ -154,6 +161,7 @@ function Gate({ mode }) {
             Пароль
             <input type="password" value={form.password} onChange={(e) => setField('password', e.target.value)} required minLength={6} />
           </label>
+          {isRegister && restaurant && <RestaurantFields value={restaurant} onChange={setRestaurant} />}
           {error && <p className="error">{error}</p>}
           <button className="action" type="submit" disabled={busy}>
             {busy ? 'Секунду…' : isRegister ? 'Создать аккаунт' : 'Войти'}
@@ -162,7 +170,7 @@ function Gate({ mode }) {
         {isRegister ? (
           <p className="switch">Уже есть аккаунт? <Link to="/login">Войти</Link></p>
         ) : (
-          <p className="switch">Первый раз? <Link to="/register">Регистрация клиента</Link></p>
+          <p className="switch">Первый раз? <Link to="/register">Регистрация</Link></p>
         )}
         {!isRegister && (
           <div className="staff">
@@ -187,23 +195,29 @@ function Gate({ mode }) {
 function Shell({ children }) {
   const { user, exit } = useAuth()
   const navigate = useNavigate()
-  const client = user.role === 'client'
+  const client = user?.role === 'client'
 
   return (
     <div className="shell">
       <header className="top">
-        <Link to={ROLE_HOME[user.role]} className="brand"><Mark /> food CRM</Link>
+        <Link to={user ? ROLE_HOME[user.role] : '/'} className="brand"><Mark /> food CRM</Link>
         <nav>
           {client ? (
             <>
-              <NavLink to="/menu">Меню</NavLink>
+              <NavLink to="/menu" end>Рестораны</NavLink>
+              <NavLink to="/cart">Корзина</NavLink>
               <NavLink to="/orders">Заказы</NavLink>
             </>
+          ) : user ? (
+            <>
+              <span className="role-chip">{ROLE_LABEL[user.role]}</span>
+              {user.role === 'restaurant' && <><NavLink to="/kitchen">Заказы</NavLink><NavLink to="/restaurant">Профиль и меню</NavLink></>}
+            </>
           ) : (
-            <span className="role-chip">{ROLE_LABEL[user.role]}</span>
+            <><NavLink to="/login">Войти</NavLink><NavLink to="/register">Регистрация</NavLink></>
           )}
         </nav>
-        <div className="who">
+        {user && <div className="who">
           <span>{user.full_name}</span>
           <button
             type="button"
@@ -214,7 +228,7 @@ function Shell({ children }) {
           >
             Выйти
           </button>
-        </div>
+        </div>}
       </header>
       {children}
     </div>
@@ -265,6 +279,7 @@ function Slip({ cart, onQty, onCheckout }) {
         </ul>
       )}
       <p className="slip-total"><span>К оплате</span><b>{tenge(cart.total)}</b></p>
+      {cart.items.length > 0 && <SplitBill total={cart.total} />}
       <form onSubmit={submit}>
         <label>
           Адрес
@@ -283,28 +298,68 @@ function Slip({ cart, onQty, onCheckout }) {
   )
 }
 
-function MenuPage() {
+function Catalog() {
+  const [restaurants, setRestaurants] = useState(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    api('/api/restaurants').then(setRestaurants).catch((err) => setError(err.message))
+  }, [])
+
+  return (
+    <Shell>
+      <section className="restaurant-tools">
+        <div className="section-head"><h1>Рестораны</h1></div>
+        {error && <p className="error">{error}</p>}
+        {!error && (restaurants ? !restaurants.length && <p>Пока нет ресторанов.</p> : <p>Загрузка ресторанов…</p>)}
+        <div className="restaurant-panels">
+          {restaurants?.map((item) => (
+            <Link key={item.id} className="slip restaurant-card" to={`/menu/${item.id}`}>
+              {item.logo && <img src={item.logo} alt="" />}
+              <h2>{item.name}</h2><p>{item.description}</p>
+              <p>{item.address} · {item.opening_hours}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+    </Shell>
+  )
+}
+
+function MenuPage({ cartOnly = false }) {
+  const { restaurantId } = useParams()
+  const { user } = useAuth()
+  const [restaurant, setRestaurant] = useState(null)
   const navigate = useNavigate()
   const [menu, setMenu] = useState([])
   const [cart, setCart] = useState({ items: [], total: 0, count: 0 })
-  const [category, setCategory] = useState('Все')
+  const [category, setCategory] = useState(null)
   const [wheelOpen, setWheelOpen] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    Promise.all([api('/api/menu'), api('/api/cart')])
-      .then(([dishes, slip]) => {
+    let active = true
+    const loadMenu = cartOnly ? Promise.resolve([null, []]) : Promise.all([
+      api('/api/restaurants'), api(`/api/menu/${encodeURIComponent(restaurantId)}`),
+    ])
+    Promise.all([loadMenu, user ? api('/api/cart') : null])
+      .then(([[restaurants, dishes], slip]) => {
+        if (!active) return
+        const match = restaurants?.find((item) => String(item.id) === restaurantId)
+        if (!cartOnly && !match) throw new Error('Ресторан не найден.')
+        setRestaurant(match)
         setMenu(dishes)
-        setCart(slip)
+        if (slip) setCart(slip)
       })
-      .catch((err) => setError(err.message))
-  }, [])
+      .catch((err) => { if (active) setError(err.message) })
+    return () => { active = false }
+  }, [cartOnly, restaurantId, user])
 
-  const categories = ['Все', ...new Set(menu.map((item) => item.category))]
-  const visible = menu.filter((item) => category === 'Все' || item.category === category)
+  const categories = [null, ...[...new Set(menu.map((item) => item.category))].sort((a, b) => a.localeCompare(b, 'ru'))]
+  const visible = menu.filter((item) => category === null || item.category === category)
   const inCart = Object.fromEntries(cart.items.map((item) => [item.menu_item_id, item.quantity]))
 
   async function add(id) {
+    if (!user) { navigate('/login'); return }
     setError('')
     try {
       setCart(await api('/api/cart', { method: 'POST', body: JSON.stringify({ menu_item_id: id, quantity: 1 }) }))
@@ -315,7 +370,24 @@ function MenuPage() {
 
   async function setQty(id, quantity) {
     const next = Math.max(0, Math.min(20, quantity))
-    setCart(await api(`/api/cart/${id}`, { method: 'PATCH', body: JSON.stringify({ quantity: next }) }))
+    setError('')
+    try {
+      setCart(await api(`/api/cart/${id}`, { method: 'PATCH', body: JSON.stringify({ quantity: next }) }))
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  async function addSet(ids) {
+    if (!user) { navigate('/login'); return false }
+    setError('')
+    try {
+      setCart(await api('/api/cart/set', { method: 'POST', body: JSON.stringify({ menu_item_ids: ids }) }))
+      return true
+    } catch (err) {
+      setError(err.message)
+      return false
+    }
   }
 
   async function checkout(body) {
@@ -328,24 +400,25 @@ function MenuPage() {
       <div className="shop">
         <section>
           <div className="section-head">
-            <h1>Меню с казана</h1>
-            <p>Блюдо попадает в чек справа. Оплата при получении.</p>
-            <button type="button" className="wheel-open" onClick={() => setWheelOpen(true)} disabled={menu.length === 0}>
+            <h1>{cartOnly ? 'Корзина' : restaurant?.name || 'Меню ресторана'}</h1>
+            {restaurant && <p>{restaurant.address} · {restaurant.opening_hours}</p>}
+            {!cartOnly && <button type="button" className="wheel-open" onClick={() => setWheelOpen(true)} disabled={menu.length === 0}>
               Не можете выбрать? Колесо фортуны
-            </button>
+            </button>}
           </div>
-          <div className="cats">
+          {!cartOnly && <MysteryMeal menu={menu} onAdd={addSet} />}
+          {!cartOnly && <div className="cats">
             {categories.map((name) => (
               <button key={name} type="button" className={name === category ? 'on' : ''} onClick={() => setCategory(name)}>
-                {name}
+                {name ?? 'Все'}
               </button>
             ))}
-          </div>
-          {error && <p className="error">{error}</p>}
+          </div>}
+          {error && <p className="error" role="alert">{error}</p>}
           <ul className="dishes">
             {visible.map((dish) => (
               <li key={dish.id}>
-                <i className={`swatch ${dish.tone}`} />
+                {dish.image ? <img className="dish-photo" src={dish.image} alt="" /> : <i className={`swatch ${dish.tone}`} />}
                 <div>
                   <b>{dish.name}</b>
                   <span>{dish.description}</span>
@@ -358,7 +431,7 @@ function MenuPage() {
             ))}
           </ul>
         </section>
-        <Slip cart={cart} onQty={setQty} onCheckout={checkout} />
+        {user && <Slip cart={cart} onQty={setQty} onCheckout={checkout} />}
       </div>
       {wheelOpen && (
         <FortuneWheel dishes={menu} inCart={inCart} onAdd={add} onClose={() => setWheelOpen(false)} />
@@ -600,14 +673,25 @@ function WorkPage({ role }) {
   )
 }
 
+function RestaurantMenuRoute() {
+  const { restaurantId } = useParams()
+  const { user, ready } = useAuth()
+  if (!ready) return <p className="wait">Загрузка меню…</p>
+  if (user && user.role !== 'client') return <Navigate to={ROLE_HOME[user.role]} replace />
+  return <MenuPage key={restaurantId} />
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <Routes>
         <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Gate mode="login" />} />
-        <Route path="/register" element={<Gate mode="register" />} />
-        <Route path="/menu" element={<RequireAuth roles={['client']}><MenuPage /></RequireAuth>} />
+        <Route path="/login" element={<Gate key="login" mode="login" />} />
+        <Route path="/register" element={<Gate key="register" mode="register" />} />
+        <Route path="/menu" element={<Catalog />} />
+        <Route path="/menu/:restaurantId" element={<RestaurantMenuRoute />} />
+        <Route path="/cart" element={<RequireAuth roles={['client']}><MenuPage cartOnly /></RequireAuth>} />
+        <Route path="/restaurant" element={<RequireAuth roles={['restaurant']}><Shell><RestaurantDashboard /></Shell></RequireAuth>} />
         <Route path="/orders" element={<RequireAuth roles={['client']}><OrdersPage /></RequireAuth>} />
         <Route path="/orders/:id" element={<RequireAuth roles={['client']}><OrderPage /></RequireAuth>} />
         <Route path="/desk" element={<RequireAuth roles={['admin']}><WorkPage role="admin" /></RequireAuth>} />

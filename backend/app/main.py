@@ -5,13 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import Base, SessionLocal, engine
-from app.routers import auth, cart, menu, orders
+from app.routers import auth, cart, menu, orders, restaurants
+from app.migrations import migrate_legacy
 from app.seed import seed
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    migrate_legacy(engine)
     db = SessionLocal()
     try:
         seed(db)
@@ -32,6 +34,7 @@ app.include_router(auth.router)
 app.include_router(menu.router)
 app.include_router(cart.router)
 app.include_router(orders.router)
+app.include_router(restaurants.router)
 
 
 @app.get("/api/health")

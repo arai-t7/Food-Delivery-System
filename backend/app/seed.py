@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import Category, MenuItem, User
+from app.models import Category, MenuItem, Restaurant, User
 from app.security import hash_password
 
 MENU = [
@@ -61,30 +61,6 @@ STAFF = [
 
 
 def seed(db: Session) -> None:
-    # Additive: new categories and dishes appear on existing databases too,
-    # while prices and descriptions already stored are left untouched.
-    for name, sort_order, dishes in MENU:
-        category = db.scalar(select(Category).where(Category.name == name))
-        if category is None:
-            category = Category(name=name, sort_order=sort_order)
-            db.add(category)
-            db.flush()
-        else:
-            category.sort_order = sort_order
-        known = set(db.scalars(select(MenuItem.name).where(MenuItem.category_id == category.id)).all())
-        for dish_name, description, price, tone in dishes:
-            if dish_name in known:
-                continue
-            db.add(
-                MenuItem(
-                    category_id=category.id,
-                    name=dish_name,
-                    description=description,
-                    price=price,
-                    tone=tone,
-                )
-            )
-
     if settings.seed_demo and db.scalar(select(User.id).where(User.role != "client").limit(1)) is None:
         for email, phone, full_name, role in STAFF:
             exists = db.scalar(select(User.id).where(User.email == email))
@@ -99,4 +75,30 @@ def seed(db: Session) -> None:
                     role=role,
                 )
             )
+    db.flush()
+    kitchen = db.scalar(select(User).where(User.email == "kitchen@example.com", User.role == "restaurant"))
+    demo = db.get(Restaurant, 1)
+    if demo is None:
+        demo = Restaurant(
+            name="Демо-кухня", description="Меню с казана", address="Не указан",
+            phone="Не указан", opening_hours="Не указаны",
+        )
+        db.add(demo)
+        db.flush()
+        populate_menu = True
+    else:
+        populate_menu = False
+    if kitchen and demo.owner_id is None:
+        demo.owner_id = kitchen.id
+    kinds = {"Супы": "first", "Салаты": "salad", "Горячее": "main", "Напитки": "drink"}
+    for name, sort_order, dishes in MENU:
+        category = db.scalar(select(Category).where(Category.restaurant_id == demo.id, Category.name == name))
+        if category is None and populate_menu:
+            category = Category(restaurant_id=demo.id, name=name, name_key=name.casefold(),
+                                sort_order=sort_order, kind=kinds.get(name, "other"))
+            db.add(category)
+            db.flush()
+            for dish_name, description, price, tone in dishes:
+                db.add(MenuItem(restaurant_id=demo.id, category_id=category.id, name=dish_name,
+                                description=description, price=price, tone=tone))
     db.commit()

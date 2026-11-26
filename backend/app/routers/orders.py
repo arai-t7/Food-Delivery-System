@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -6,7 +7,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
 from app.deps import get_current_user, require_roles
-from app.models import STATUSES, CartItem, Order, OrderItem, User
+from app.models import STATUSES, CartItem, Order, OrderItem, Restaurant, User
+from app.routers.cart import lock_cart
 from app.schemas import CheckoutIn, OrderOut, StatusIn
 from app.serializers import order_payload
 
@@ -20,6 +22,17 @@ ALLOWED = {
 }
 
 
+def owned_ids(user: User):
+    return select(Restaurant.id).where(Restaurant.owner_id == user.id)
+
+
+def check_restaurant_access(db: Session, user: User, order: Order):
+    if user.role == "restaurant":
+        restaurant_id = db.scalar(owned_ids(user))
+        if restaurant_id is None or order.restaurant_id != restaurant_id:
+            raise HTTPException(403, "Это заказ другого ресторана.")
+
+
 def _load(db: Session, order_id: int) -> Order | None:
     return db.scalar(
         select(Order)
@@ -30,6 +43,7 @@ def _load(db: Session, order_id: int) -> Order | None:
 
 @router.post("", response_model=OrderOut)
 def checkout(body: CheckoutIn, db: Session = Depends(get_db), user: User = Depends(require_roles("client"))):
+    lock_cart(db, user.id)
     rows = list(
         db.scalars(
             select(CartItem)
@@ -40,9 +54,13 @@ def checkout(body: CheckoutIn, db: Session = Depends(get_db), user: User = Depen
     if not rows:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Чек пустой. Добавьте блюдо.")
 
+    restaurants = {row.menu_item.restaurant_id for row in rows}
+    if len(restaurants) != 1 or any(not row.menu_item.is_available for row in rows):
+        raise HTTPException(409, "Проверьте наличие блюд и выберите один ресторан для заказа.")
     total = sum(row.menu_item.price * row.quantity for row in rows)
     order = Order(
-        number="черновик",
+        number=uuid4().hex[:20],
+        restaurant_id=restaurants.pop(),
         user_id=user.id,
         status="placed",
         address=body.address.strip(),
@@ -83,7 +101,7 @@ def my_orders(db: Session = Depends(get_db), user: User = Depends(require_roles(
 def queue(db: Session = Depends(get_db), user: User = Depends(require_roles("admin", "restaurant", "courier"))):
     query = select(Order).options(selectinload(Order.items), selectinload(Order.user))
     if user.role == "restaurant":
-        query = query.where(Order.status.in_(("placed", "cooking", "ready")))
+        query = query.where(Order.status.in_(("placed", "cooking", "ready")), Order.restaurant_id.in_(owned_ids(user)))
     elif user.role == "courier":
         query = query.where(Order.status.in_(("ready", "on_the_way")))
     rows = db.scalars(query.order_by(Order.id.desc())).all()
@@ -95,6 +113,7 @@ def one_order(order_id: int, db: Session = Depends(get_db), user: User = Depends
     order = _load(db, order_id)
     if order is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден.")
+    check_restaurant_access(db, user, order)
     if user.role == "client" and order.user_id != user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Это чужой заказ.")
     return order_payload(order)
@@ -112,6 +131,7 @@ def set_status(
     order = _load(db, order_id)
     if order is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден.")
+    check_restaurant_access(db, user, order)
     if user.role != "admin" and (order.status, body.status) not in ALLOWED[user.role]:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Так статус сменить нельзя.")
     if body.status == "cancelled" and order.status in {"delivered", "cancelled"}:
